@@ -1,0 +1,11 @@
+--- cmake/modules/SearchInstalledSoftware.cmake.orig	2025-02-17 10:42:12.126571869 +0000
++++ cmake/modules/SearchInstalledSoftware.cmake	2025-02-17 10:44:15.090301292 +0000
+@@ -224,7 +224,7 @@
+     message(STATUS "Downloading and building GSL version ${gsl_version}") 
+     ExternalProject_Add(
+       GSL
+-      URL http://mirror.switch.ch/ftp/mirror/gnu/gsl/gsl-${gsl_version}.tar.gz
++      URL https://ftp.gnu.org/gnu/gsl/gsl-${gsl_version}.tar.gz
+       INSTALL_DIR ${CMAKE_BINARY_DIR}
+       CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix <INSTALL_DIR> --enable-shared=no CFLAGS=${CMAKE_C_FLAGS}
+     )
