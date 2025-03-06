@@ -9,13 +9,14 @@ apptainer build --no-cleanup ROOT-acqu_Ubuntu18.sif ROOT-acqu_Ubuntu18_NEW.def 2
 
 Production build
 ```bash
-apptainer build ROOT-acqu_Ubuntu18.sif ROOT-acqu_Ubuntu18_NEW.def
+apptainer build ROOT-acqu_Ubuntu-18.04.sif ROOT-acqu_Ubuntu-18.04.def
 ```
 
 ## Running
 Bind a local directory, not for this test you must be inside the local `acqu_user` dir which is a copy of from the `acqu` repo.
 ```bash
-apptainer run --bind /home/nd996/src/Apptainer/ROOT/acqu_user:/opt/acqu_source/acqu_user ROOT-acqu.sif AcquRoot AR.dat
+cd acqu_user
+apptainer run --bind /home/nd996/src/Apptainer/ROOT/acqu_user:/opt/acqu_source/acqu_user ../ROOT-acqu_Ubuntu-18.04.sif AcquRoot AR.dat
 ```
 > NOTE: the `AR.dat` file describes `TreeFile: scratch/geant.root` which doesn't exist.
 
