@@ -1,1 +1,4 @@
 root_v5.34.34.source.tar.gz
+*.sif
+acqu_user
+AcquRoot.log

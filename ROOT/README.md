@@ -1,106 +1,56 @@
+# Build & Run container
 
-# Ubuntu stop unattended upgrades
+## Build
+
+For debugging, don't clean up the build directory and log all the output to file
+```bash
+apptainer build --no-cleanup ROOT-acqu_Ubuntu18.sif ROOT-acqu_Ubuntu18_NEW.def 2>&1 | tee outfile
 ```
+
+Production build
+```bash
+apptainer build ROOT-acqu_Ubuntu18.sif ROOT-acqu_Ubuntu18_NEW.def
+```
+
+## Running
+Bind a local directory, not for this test you must be inside the local `acqu_user` dir which is a copy of from the `acqu` repo.
+```bash
+apptainer run --bind /home/nd996/src/Apptainer/ROOT/acqu_user:/opt/acqu_source/acqu_user ROOT-acqu.sif AcquRoot AR.dat
+```
+> NOTE: the `AR.dat` file describes `TreeFile: scratch/geant.root` which doesn't exist.
+
+
+
+
+---
+
+# Useful commands when running Ubuntu 18.04 in a VM
+
+## Ubuntu stop unattended upgrades
+
+By default Ubuntu with lock `apt` after first install, start upgrading the system and block you from installing anything.
+```bash
 sudo dpkg-reconfigure -plow unattended-upgrades
 ```
 
-# Fix keyboard layout
-```
+## Fix keyboard layout
+```bash
 sudo dpkg-reconfigure keyboard-configuration
 ```
 
-
-### dont use, trynewer GCC
-> apt install g++-4.8 gcc-4.8 
-> sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 10
-> sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 10
-
-
-apt install libbz2-dev libcurl4-openssl-dev
-
-./configure --disable-xrootd  --disable-krb5 --disable-odbc --disable-oracle --disable-pgsql --disable-qt  --enable-unuran --enable-table --enable-explicitlink --enable-minuit2 --enable-roofit --enable-cxx14 --disable-davix
-
-
-### fix the gfal define
-
-```
-sed -i 's/#ifdef _GFAL2_API_/#ifdef _GFAL2_API_ || defined(GFAL2_API_H_)/' /opt/root/io/gfal/src/TGFALFile.cxx
-```
-make
-
-
-## Use cmake instead
-
-
-```diff
---- /opt/root/tmva/src/RuleFitParams.cxx.orig	2025-02-14 14:47:05.706328347 +0000
-+++ /opt/root/tmva/src/RuleFitParams.cxx	2025-02-14 14:48:05.158148747 +0000
-@@ -24,6 +24,7 @@
-  * (http://tmva.sourceforge.net/LICENSE)                                          *
-  **********************************************************************************/
- 
-+#include <cmath>
- #include <iostream>
- #include <iomanip>
- #include <numeric>
-@@ -880,7 +881,7 @@
-       fstarVal = fRuleEnsemble->FStar(e);
-       fFstar.push_back(fstarVal);
-       fstarSorted.push_back(fstarVal);
--      if (isnan(fstarVal)) Log() << kFATAL << "F* is NAN!" << Endl;
-+      if (std::isnan(fstarVal)) Log() << kFATAL << "F* is NAN!" << Endl;
-    }
-    // sort F* and find median
-    std::sort( fstarSorted.begin(), fstarSorted.end() );
+## Install & set older default GCC
+```bash
+apt install g++-4.8 gcc-4.8 
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 10
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 10
 ```
 
+## Use cmake instead of ./configure
 
-### commands to run
-``` bash
-wget
-tar
-cd root-version
-# cmake may take care of this
-#sed -i 's/#ifdef _GFAL2_API_/#ifdef _GFAL2_API_ || defined(GFAL2_API_H_)/' /opt/root/io/gfal/src/TGFALFile.cxx
-
-# fix broken mirror
-sed  -i 's|http://mirror.switch.ch/ftp/mirror/gnu/gsl|https://ftp.gnu.org/gnu/gsl|g' ../cmake/modules/SearchInstalledSoftware.cmake
-# add patch (add thw above to patch too?
-# patch < fix-cmath-include.patch
-
-#mkdir root_build && cd root_build
-cd build
-cmake -DCMAKE_CXX_FLAGS="-D_GFAL2_API_ -std=c++11 -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include" -Dbuiltin_gsl=ON -DCMAKE_INSTALL_PREFIX=/usr  ..
-#cmake --build . -- -j$(nproc --all)
-cmake --build . -- install -j$(nproc --all)
-
-### build acqu
-cd /opt
-git clone https://github.com/A2-Collaboration/acqu.git
-cd ./acqu/
-# last commit, in case things change
-git reset --hard b7571696ec72e2b08d64d7640f9ed5a39eddb9f6
-mkdir build && cd build && cmake ..
-make -j$(nproc all)
-
-```
-
-
-
-
-### Notes
-Needs 
+### Build Notes
+Needs:
 - `std=c++11`
 - `builtin_gsl=ON` Ubuntu installed version is too new
 - Include dirs `-I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include"`
 
 
-
-
-
-
-### Ignore
-/usr/include/gfal2/common/gfal_common.h
-```
-#include "glib-2.0/glib.h"
-```

@@ -32,8 +32,6 @@ From: ubuntu:{{ VERSION }}
 	packages_acqu packages_acqu
 	fix-cmath-include.patch fix-cmath-include.patch
 	fix-gls-URL.patch fix-gls-URL.patch
-	# FIXME: for debugging only
-	root_v5.34.34.source.tar.gz root_v5.34.34.source.tar.gz
 
 %post
    	echo "Inside the container, setting things up..."
@@ -49,10 +47,7 @@ From: ubuntu:{{ VERSION }}
 	# Download and build ROOT                                                  #
 	############################################################################
 	mkdir /build && cd /build
-	#FIXME: 
-	# wget {{ ROOT_URL }}{{ ROOT_BIN }}
-	mv /{{ ROOT_BIN }} .
-	# above for debugging only
+	wget {{ ROOT_URL }}{{ ROOT_BIN }}
 	tar -xzvf {{ ROOT_BIN }} && rm -f {{ ROOT_BIN }} && cd root
 	# fix gsl download link in 'cmake/modules/SearchInstalledSoftware.cmake'
 	patch -p0 < /fix-gls-URL.patch
@@ -106,8 +101,7 @@ From: ubuntu:{{ VERSION }}
 # This is what happens when you run the container...
 %runscript
 	echo Run 'root' or 'AcquRoot' for example
-	# exec root -b
 	exec "$@"
 
 %help
-    Some help text goes here.
+    Run 'root' or 'AcquRoot' with their respective arguments.
