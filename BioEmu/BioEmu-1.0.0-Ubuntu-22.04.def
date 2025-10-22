@@ -9,19 +9,14 @@ From: ubuntu:22.04
     # Set locale for compatibility
     export LC_ALL=C
     export LANG=C
-
-	# FIXME
-    # need to bind in a folder for `/root/sampling_so3_cache/` when running the container
-    # https://github.com/microsoft/bioemu/blob/ccba8dbaa2b7d52328deb6f14aeb5b7fbb2ebf79/tests/conftest.py#L35
+	# Define a base data directory
+    export BIOEMU_DATA_DIR="/data"
 
 %post
+    export DEBIAN_FRONTEND=noninteractive
     export BIOEMU_VERSION="1.1.0"
     export BIOEMU_COLABFOLD_DIR="/opt/bioemu_colabfold"
-    export DEBIAN_FRONTEND=noninteractive
-
-    # FIXME for HPC auto-bind mounting issues (e.g., /users -> /users)
-    mkdir -p /users
-    ## remove later
+    export BIOEMU_DATA_DIR="/data"
 
     # build deps
     apt-get update
@@ -44,6 +39,10 @@ From: ubuntu:22.04
     # Install BioEmu and all its Python dependencies (including PyTorch)
     echo "Installing bioemu via pip..."
     pip install bioemu==${BIOEMU_VERSION}
+
+    # Create some directories, including the output_dir directory, for binding if custom paths are set for these options
+    # All directories are named after their corresponding option
+    mkdir -p ${BIOEMU_DATA_DIR}/{output_dir,ckpt_path,model_config_path,denoiser_config_path,cache_so3_dir}
 
     # The first time bioemu is used to sample structures, it will also setup
     # Colabfold on a separate virtual environment for MSA and embedding
@@ -92,8 +91,7 @@ From: ubuntu:22.04
     echo "BioEmu installation and Colabfold setup complete."
 
 %runscript
-    # The default entry point for the container.
-    # It executes the bioemu.sample module with all arguments passed to the container.
+    # The default entry point for the container with all arguments passed to the container.
     echo "Running BioEmu sampling..."
     exec python -m "$@"
 
@@ -104,10 +102,14 @@ From: ubuntu:22.04
     Description "Inference code for scalable emulation of protein equilibrium ensembles with generative deep learning."
 
 %help
-    This container encapsulates the BioEmu deep learning model for protein equilibrium ensemble sampling.
+    This container encapsulates the BioEmu deep learning model for protein equilibrium ensemble sampling. You must bind the path of an existinmg output folder when running the container:
 
     **To Run the image (requires GPU):**
-    apptainer run --nv BioEmu-1.0.0-Ubuntu-22.04.sif [BioEmu arguments]
+    apptainer run --nv --bind /path/to/output:${BIOEMU_DATA_DIR}/output_dir BioEmu-1.0.0-Ubuntu-22.04.sif [BioEmu arguments]
 
     **Example Usage (sampling 100 structures for a test sequence):**
-    apptainer run --nv BioEmu-1.0.0-Ubuntu-22.04.sif bioemu.sample --sequence GYDPETGTWG --num_samples 100 --output_dir /path/to/results
+    apptainer run --nv --bind /mnt/scratch/users/$USER/output:${BIOEMU_DATA_DIR}/output_dir BioEmu-1.0.0-Ubuntu-22.04.sif bioemu.sample --sequence GYDPETGTWG --num_samples 100 --output_dir ${BIOEMU_DATA_DIR}/output_dir
+
+    **Other paths out of {output_dir,ckpt_path,model_config_path,denoiser_config_path,cache_so3_dir} can also be bound to local folders on the command line, then the corresponding option also set in the [BioEmu arguments] for example, to also set 'cache_so3_dir':**
+
+    apptainer run --nv --bind /mnt/scratch/users/$USER/output:${BIOEMU_DATA_DIR}/output_dir,/mnt/scratch/users/$USER/cache_so3_dir:${BIOEMU_DATA_DIR}/cache_so3_dir BioEmu-1.0.0-Ubuntu-22.04.sif bioemu.sample --sequence GYDPETGTWG --num_samples 100 --output_dir ${BIOEMU_DATA_DIR}/output_dir --cache_so3_dir ${BIOEMU_DATA_DIR}/cache_so3_dir
