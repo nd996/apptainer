@@ -1,0 +1,189 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%environment
+    # Set the path where BioEmu should install its Colabfold/Alphafold dependencies.
+    # This ensures the installation is contained within the image.
+    export BIOEMU_COLABFOLD_DIR="/opt/bioemu_colabfold"
+    export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/python3"
+    # Set locale for compatibility
+    export LC_ALL=C
+    export LANG=C
+    # Define a base data directory
+    export BIOEMU_DATA_DIR="/data"
+    # Conda variables
+    export CONDA_DIR="/opt/conda"
+    export PATH="${CONDA_DIR}/bin:$PATH"
+    # Needed for the hpacker set up:
+    export CONDA_ROOT="/opt/conda"   
+    # hpacker installed dir
+    export HPACKER_REPO_DIR="${BIOEMU_DATA_DIR}/hpacker"
+    export HPACKER_ENVNAME="hpacker"
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    export BIOEMU_VERSION="bioemu[md]==1.1.0"
+    export BIOEMU_COLABFOLD_DIR="/opt/bioemu_colabfold"
+    export BIOEMU_DATA_DIR="/data"
+
+    # Conda
+    export CONDA_DIR="/opt/conda"
+    # Needed for the hpacker set up:
+    export CONDA_ROOT="/opt/conda"
+    # hpacker install dir
+    export HPACKER_REPO_DIR="${BIOEMU_DATA_DIR}/hpacker"
+    export HPACKER_ENVNAME="hpacker"
+
+    # build deps
+    apt-get update
+    # Install only necessary shell utilities, not system python
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        git \
+        wget \
+        patch \
+        libopenmpi-dev \
+        && rm -rf /var/lib/apt/lists/*
+
+    # =========================================================
+    # Install Conda using Miniforge
+    # =========================================================
+    echo "Downloading and running Conda install script..."
+    wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    /bin/bash Miniforge3.sh -b -p "${CONDA_DIR}"
+    rm Miniforge3.sh
+
+    # Add Conda's bin to PATH for the remainder of the build
+    export PATH="${CONDA_DIR}/bin:$PATH"
+
+    # =========================================================
+    # Install Python 3.10 to base Conda (3.10 is required for BioEmu compatability)
+    # =========================================================
+    echo "Installing Python 3.10 and Conda-managed Pip..."
+    # Prioritise the Conda-Forge community channel
+    conda config --add channels conda-forge
+    conda config --set channel_priority strict
+    conda install -y python=3.10 pip
+
+    echo "Installing BioEmu package..."
+    # Use the Conda-managed Pip to install BioEmu (which now uses the compatible Python 3.10)
+    ${CONDA_DIR}/bin/pip install ${BIOEMU_VERSION}
+
+    # Create some directories, including the output_dir directory, for binding if custom paths are set for these options
+    # All directories are named after their corresponding option
+    mkdir -p ${BIOEMU_DATA_DIR}/{input,output_dir,ckpt_path,model_config_path,denoiser_config_path,cache_so3_dir}
+    # Paths for the optional [md], found in 'src/bioemu/sidechain_relax.py'
+    mkdir -p ${BIOEMU_DATA_DIR}/{outpath,xtc_path,pdb_path}
+
+    # The first time bioemu is used to sample structures, it will also setup
+    # Colabfold on a separate virtual environment for MSA and embedding
+    # generation. By default this setup uses the ~/.bioemu_colabfold directory,
+    # but if you wish to have this changed please manually set the
+    # BIOEMU_COLABFOLD_DIR environment variable accordingly before sampling for
+    # the first time.
+    echo "Manually setting up the Colabfold environment (requires internet)..."
+
+    python3 <<- EOF
+	import os
+	import sys
+	import logging
+	from bioemu import get_embeds
+	from bioemu.model_utils import maybe_download_checkpoint
+	
+	# Set up logging to capture output during build
+	logging.basicConfig(level=logging.INFO)
+	
+	# --- 1. Download Model Checkpoint ---
+	# With default settings
+	# https://github.com/microsoft/bioemu/blob/ccba8dbaa2b7d52328deb6f14aeb5b7fbb2ebf79/src/bioemu/sample.py#L44
+	model_name = 'bioemu-v1.1'
+	logging.info(f"Downloading checkpoint for model: {model_name}")
+	try:
+	    maybe_download_checkpoint(model_name=model_name, ckpt_path=None, model_config_path=None)
+	    logging.info("Checkpoint download successful.")
+	except Exception as e:
+	    logging.error(f"Checkpoint download failed: {e}")
+	    sys.exit(1)
+	
+	# --- 2. Install Colabfold Venv ---
+	# Checks the BIOEMU_COLABFOLD_DIR env var and installs Colabfold
+	# into that separate virtual environment if it's missing
+	logging.info(f"Checking and ensuring Colabfold installation in {os.environ.get('BIOEMU_COLABFOLD_DIR', '~/.bioemu_colabfold')}...")
+	try:
+	    get_embeds.ensure_colabfold_install()
+	    logging.info("Colabfold installation successful.")
+	except Exception as e:
+	    logging.error(f"Colabfold installation failed: {e}")
+	    # Fatal exit status on failure
+	    sys.exit(1)
+	EOF
+
+    # =========================================================
+    # Manually call 'bioemu.hpacker_setup.setup_hpacker' to set up hpacker dependencies...
+    # =========================================================
+    python3 <<- EOF
+	import os
+	import sys
+	import logging
+	from bioemu.hpacker_setup.setup_hpacker import ensure_hpacker_install
+	
+	# Set up logging to capture output during build
+	logging.basicConfig(level=logging.INFO)
+	
+	# --- Install hpacker ---
+	# Ensures hpacker and its dependencies are installed under conda environment named 'hpacker'
+	hp_env_name = os.environ.get('HPACKER_ENVNAME')
+	hp_repo_dir = os.environ.get('HPACKER_REPO_DIR')
+	logging.info(f"Using environment name: {hp_env_name}")
+	logging.info(f"Using repository directory: {hp_repo_dir})")
+	try:
+	    ensure_hpacker_install(envname = hp_env_name, repo_dir = hp_repo_dir)
+	    logging.info("hpacker installation successful.")
+	except Exception as e:
+	    logging.error(f"hpacker installation failed: {e}")
+	    # Fatal exit status on failure
+	    sys.exit(1)
+	EOF
+
+    unset DEBIAN_FRONTEND
+    echo "BioEmu installation and Colabfold setup complete."
+
+%runscript
+    # The default entry point for the container with all arguments passed to the container.
+    echo "Running BioEmu sidechain_relax ..."
+    exec python -m bioemu.sidechain_relax "$@"
+
+%labels
+    Software "BioEmu"
+    Version "1.1.0"
+    SourceURL "https://github.com/microsoft/bioemu"
+    Description "Inference code for scalable emulation of protein equilibrium ensembles with generative deep learning."
+
+%help
+    [ EXPERIMENTAL SIDE-CHAIN RECONSTRUCTION AND MD-RELAXATION ]
+
+    This container encapsulates the BioEmu deep learning model for side-chain reconstruction and local energy minimization.
+    
+    ** Requires a GPU **
+
+    ** To Run the image **
+    You must bind the path of an existing output folder when running the container:
+
+    apptainer run \
+        --nv \
+        --bind /path/to/output:${BIOEMU_DATA_DIR}/outpath \
+        BioEmu[md]-1.1.0-Conda.sif \
+        [bioemu.sidechain_relax arguments]
+
+
+    ** Other paths out of {outpath, input, xtc_path, pdb_path} can also be bound **
+    If your 'xtc' and 'pdb' files are in the same directory, bind the 'input' directory and reference the file paths on the command line. Alternatively you can bind both 'xtc_path' and 'pdb_path' separately and their corresponding file paths. Example of using the 'input' directory:
+    
+    apptainer run \
+        --nv \
+        --bind /mnt/scratch/users/$USER/output:${BIOEMU_DATA_DIR}/outpath,/mnt/scratch/users/$USER/input:${BIOEMU_DATA_DIR}/input \
+        BioEmu[md]-1.1.0-Conda.sif \
+        --outpath ${BIOEMU_DATA_DIR}/outpath \
+        --pdb-path ${BIOEMU_DATA_DIR}/input/topology.pdb \
+        --xtc-path ${BIOEMU_DATA_DIR}/input/samples.xtc
