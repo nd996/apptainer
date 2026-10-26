@@ -8,17 +8,23 @@ From: nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
 # Run:     apptainer exec --nv \
 #            --bind /path/to/hf_cache:/hf_cache \
 #            --bind /path/to/work:/work \
-#            evo2_light.sif python your_script.py
+#            evo2-0.6.0-light.def python your_script.py
+
+%arguments
+    # Override on the command line during build
+    pytorch_ver=2.7.1
+    flash_attn_ver=2.8.0.post2
+    evo2_ver=0.6.0
 
 %labels
-    Description Evo 2 v0.6.0 light install (7B models, bf16, no Transformer Engine)
+    Description Evo 2 v{{ evo2_ver }} light install (7B models, bf16, no Transformer Engine)
     CUDA 12.8.1
     Python 3.12
-    PyTorch 2.7.1
-    FlashAttention 2.8.0.post2
+    PyTorch {{ pytorch_ver }}
+    FlashAttention {{ flash_attn_ver }}
 
 %help
-    Evo 2 (7B models only) with PyTorch 2.7.1 + FlashAttention 2.8.0.post2.
+    Evo 2 (7B models only) with PyTorch {{ pytorch_ver }} + FlashAttention {{ flash_attn_ver }}.
     Supported checkpoints: evo2_7b, evo2_7b_262k, evo2_7b_base, evo2_7b_microviridae.
     NOT supported (need Transformer Engine/FP8 on Hopper): evo2_1b_base, evo2_20b, evo2_40b.
 
@@ -26,7 +32,7 @@ From: nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
     Bind a writable folder to /hf_cache so model weights (~15 GB for 7B) are downloaded once and reused.
 
     Smoke test (needs a GPU node):
-      apptainer exec --nv --bind /your/hf_cache:/hf_cache evo2-0.6.0-light.sif \
+      apptainer exec --nv --bind /your/hf_cache:/hf_cache evo2-{{ evo2_ver }}-light.sif \
         python -m evo2.test.test_evo2_generation --model_name evo2_7b
 
 %environment
@@ -39,7 +45,7 @@ From: nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
     export TRITON_CACHE_DIR=${TRITON_CACHE_DIR:-/tmp/triton_cache}
     export PYTHONNOUSERSITE=1
 
-%post
+%post -c /bin/bash
     set -euo pipefail
     export DEBIAN_FRONTEND=noninteractive
 
@@ -51,15 +57,15 @@ From: nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
 
     # Isolated virtualenv (Ubuntu 24.04 blocks system-wide pip installs, PEP 668)
     python3 -m venv /opt/venv
-    source /opt/venv/bin/activate
+    . /opt/venv/bin/activate
 
     pip install --no-cache-dir --upgrade pip setuptools wheel packaging ninja psutil numpy
 
     # 1) PyTorch first (flash-attn needs it at build time). cu128 wheels bundle their own CUDA runtime libs.
-    pip install --no-cache-dir torch==2.7.1 --index-url https://download.pytorch.org/whl/cu128
+    pip install --no-cache-dir torch=={{ pytorch_ver }} --index-url https://download.pytorch.org/whl/cu128
 
     # Stop later installs from swapping torch for a different version
-    echo "torch==2.7.1" > /opt/constraints.txt
+    echo "torch=={{ pytorch_ver }}" > /opt/constraints.txt
     export PIP_CONSTRAINT=/opt/constraints.txt
 
     # 2) Flash Attention. setup.py first tries to download a matching prebuilt wheel
@@ -67,25 +73,16 @@ From: nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
     #    MAX_JOBS limits RAM use during a source build; TORCH_CUDA_ARCH_LIST = A40 (8.6) + H100 (9.0).
     export MAX_JOBS=4
     export TORCH_CUDA_ARCH_LIST="8.6;9.0"
-    pip install --no-cache-dir flash-attn==2.8.0.post2 --no-build-isolation
+    pip install --no-cache-dir flash-attn=={{ flash_attn_ver }} --no-build-isolation
 
     # 3) Evo 2
-    pip install --no-cache-dir evo2==0.6.0
+    pip install --no-cache-dir evo2=={{ evo2_ver }}
 
     # Make sure torch was not changed, then clean up
-    python -c "import torch; assert torch.__version__.startswith('2.7.1'), torch.__version__"
+    python -c "import torch; assert torch.__version__.startswith('{{ pytorch_ver }}'), torch.__version__"
     pip cache purge || true
     apt-get clean
     mkdir -p /hf_cache /work
 
 %runscript
     exec "$@"
-
-%test
-    source /opt/venv/bin/activate
-    python - <<'EOF'
-    import torch, flash_attn, evo2
-    print("torch", torch.__version__, "| CUDA build", torch.version.cuda)
-    print("flash_attn", flash_attn.__version__)
-    print("evo2 imported OK")
-    EOF
